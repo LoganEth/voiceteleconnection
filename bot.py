@@ -4,6 +4,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler as Telegram
 from telegram.ext import filters
 from config import TELEGRAM_TOKEN
 from handlers import MessageHandler
+from admin_handlers import AdminHandler
 
 logger = logging.getLogger(__name__)
 
@@ -15,9 +16,19 @@ def main():
         
         # Initialize handlers
         message_handler = MessageHandler()
+        admin_handler = AdminHandler()
         
-        # Add handlers
+        # Add regular handlers
         application.add_handler(CommandHandler("start", message_handler.start_command))
+        application.add_handler(CommandHandler("help", message_handler.help_command))
+        
+        # Add admin handlers
+        application.add_handler(CommandHandler("add_admin", admin_handler.add_admin_command))
+        application.add_handler(CommandHandler("stats", admin_handler.stats_command))
+        application.add_handler(CommandHandler("broadcast", admin_handler.broadcast_command))
+        application.add_handler(CommandHandler("help_admin", admin_handler.help_admin_command))
+        
+        # Add message handler (should be last)
         application.add_handler(TelegramMessageHandler(
             filters.TEXT & ~filters.COMMAND,
             message_handler.message_handler

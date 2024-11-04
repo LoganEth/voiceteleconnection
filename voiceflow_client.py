@@ -54,3 +54,7 @@ class VoiceflowClient:
             'type': 'text',
             'payload': message
         })
+
+    async def handle_button_click(self, user_id: str, button_request: Dict[str, Any]) -> List[Dict]:
+        """Handle button click interaction"""
+        return await self.interact(user_id, button_request)

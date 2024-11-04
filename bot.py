@@ -1,6 +1,6 @@
 import logging
 from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler as TelegramMessageHandler
+from telegram.ext import Application, CommandHandler, MessageHandler as TelegramMessageHandler, CallbackQueryHandler
 from telegram.ext import filters
 from config import TELEGRAM_TOKEN
 from handlers import MessageHandler
@@ -27,6 +27,9 @@ def main():
         application.add_handler(CommandHandler("stats", admin_handler.stats_command))
         application.add_handler(CommandHandler("broadcast", admin_handler.broadcast_command))
         application.add_handler(CommandHandler("help_admin", admin_handler.help_admin_command))
+        
+        # Add callback query handler for buttons
+        application.add_handler(CallbackQueryHandler(message_handler.button_callback))
         
         # Add message handler (should be last)
         application.add_handler(TelegramMessageHandler(

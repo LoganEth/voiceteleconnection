@@ -52,9 +52,6 @@ class MessageHandler:
             # Update stats for new user
             AdminHandler.update_stats(user_id)
             
-            # Send welcome message
-            await update.message.reply_text("Welcome! I'm starting a new conversation for you...")
-            
             try:
                 traces = await self.voiceflow_client.launch_conversation(user_id)
                 await self.process_voiceflow_response(update, traces)

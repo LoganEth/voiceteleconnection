@@ -1,0 +1,216 @@
+Fetch Project
+get
+https://api.voiceflow.com/v2/versions/{versionID}/export
+Retrieve your Voiceflow project files. It will either be a:
+
+.vf file which contains all the information of a project including details about blocks and steps in the diagrams.
+.vfr file which includes a more concise version of the project in the programs property. We recommend to use this file for any programmatic analysis or integrating with third-party tooling.
+In order to reliably use the .vfr file's programs property, we recommend selecting the "Publish" or "Run" button from the canvas after any updates to the project to ensure it is reflected in the file.
+
+Path Params
+versionID
+string
+required
+Voiceflow project version ID. You can also use 'development' to identify the version on canvas or 'production' to identify the published version. However if using an alias this must be used in conjuction with the projectid header.
+
+Query Params
+prototype
+boolean
+If specified returns a .vfr file
+
+
+Headers
+projectid
+string
+Voiceflow project ID. This is meant to be used in conjunction with a versionID alias on the path.
+
+Response
+
+200
+OK
+
+Response body
+json
+Updated 6 months ago
+
+Create Transcript Tag
+Did this page help you?
+Language
+
+Shell
+
+Node
+
+Ruby
+
+PHP
+
+Python
+Authorization
+Header
+Authorization
+
+1
+curl --request GET \
+2
+     --url https://api.voiceflow.com/v2/versions/versionID/export \
+3
+     --header 'accept: application/json'
+
+Try It!
+RESPONSE
+45
+            "portsV2": {
+46
+              "byKey": {},
+47
+              "builtIn": {},
+48
+              "dynamic": []
+49
+            }
+50
+          }
+51
+        }
+52
+      }
+53
+    }
+54
+  },
+55
+  "programs": {
+56
+    "63204daf2c4a550006873773": {
+57
+      "commands": [],
+58
+      "lines": {
+59
+        "start00000000000000000000": {
+60
+          "id": "start00000000000000000000",
+61
+          "type": "start",
+62
+          "nextId": "63037ec09f4c20d547b1bbf5"
+63
+        },
+64
+        "63037ec09f4c20d547b1bbf5": {
+65
+          "id": "63037ec09f4c20d547b1bbf5",
+66
+          "type": "text",
+67
+          "texts": [
+68
+            {
+69
+              "id": "oisn3gkl",
+70
+              "content": [
+71
+                {
+72
+                  "children": [
+73
+                    {
+74
+                      "text": "Hello world!"
+75
+                    }
+76
+                  ]
+77
+                }
+78
+              ]
+79
+            }
+80
+          ],
+81
+          "nextId": null
+82
+        }
+83
+      },
+84
+      "name": "ROOT",
+85
+      "startId": "start00000000000000000000",
+86
+      "variables": [],
+87
+      "id": "63204daf2c4a550006873773",
+88
+      "versionID": "63204daf2c4a550006873772"
+89
+    }
+90
+  }
+91
+}
+
+You can find your Project ID and Version ID in the general settings. This article will explain what they are and why you might care about using them.
+
+
+
+Versions
+Voiceflow agents use versions to be able to choose a specific version of their agent to run with our Dialog Manager API (DM API) or the Chat Widget, and is also required for some other APIs.
+
+The two main versions available are:
+
+development: A new development version is compiled each time you click on the Play button
+
+production: A new production version is published each time you click on the Publish button
+
+A development version is meant to be used for testing purpose, when you are making changes to your agent and want to test them before pushing those changes to your live agent (production). A production version should be a stable, tested version you want to use in production while you’re working on the development version of your agent in Voiceflow Creator.
+
+Each version has a unique version ID associated, but your current production and development version can often be referred to using their alias. The production version's alias is production and the development version's alias is development. This is useful because it means you don't have to update the version ID being used in your code if you publish a new version.
+
+Note: A couple of APIs might still next the exact version ID instead of an alias like in the versions API.
+
+When you make a request to the DM API without passing any version in the header, we default to the development version (same goes for the Chat Widget snippet code).
+
+Below, a DM API launch request using the development version of an agent
+
+cURL
+
+curl --request POST \
+  --url https://general-runtime.voiceflow.com/state/user/demo/interact \
+  --header 'Authorization: VF.DM.XYZ' \
+  --header 'Content-Type: application/json' \
+  --header 'versionID: development' \
+  --data '{
+	"action": {
+		"type": "launch"
+  }
+}'
+Below, some Chat Widget snippet code loading the production version of an agent
+
+HTML
+
+<script type="text/javascript">
+  (function(d, t) {
+      var v = d.createElement(t), s = d.getElementsByTagName(t)[0];
+      v.onload = function() {
+        window.voiceflow.chat.load({
+          verify: { projectID: 'xyz' },
+          url: 'https://general-runtime.voiceflow.com',
+          versionID: 'production'
+        });
+      }
+      v.src = "https://cdn.voiceflow.com/widget/bundle.mjs"; v.type = "text/javascript"; s.parentNode.insertBefore(v, s);
+  })(document, 'script');
+</script>
+Again, always having two different versions allow you to keep working on/updating your agent (development) without impacting an existing live version (production).
+
+Project IDs
+Project IDs are only required for certain APIs, and is also used in the web chat's code snippet. It can be found from the Settings → General page, and uniquely identifies your project (and never changes).
+
+For the DM API for example, the link to the project is done through the API key directly, but some APIs the like the Transcripts API for example, needs both the authorization and the Project ID.
+
+In general, you'll only need to use the API key, and your applications can have a local variable storing the project ID for when it's needed, but in some cases you might need your Project ID.

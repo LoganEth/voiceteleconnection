@@ -9,6 +9,7 @@ load_dotenv()
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 VOICEFLOW_API_KEY = os.getenv('VOICEFLOW_API_KEY')
 VOICEFLOW_BASE_URL = 'https://general-runtime.voiceflow.com'
+VOICEFLOW_VERSION = os.getenv('VOICEFLOW_VERSION_ID', 'production')  # Default to production version
 
 # Configure logging
 LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')

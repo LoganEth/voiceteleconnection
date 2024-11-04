@@ -1,0 +1,95 @@
+In this guide, we are creating a Telegram bot that is connected directly with a Voiceflow agent.
+
+1464
+Telegram bot
+
+🚧
+Before you start
+
+Create a Voiceflow agent: you need to first build a chat project on Voiceflow
+Find your Dialog Manager API Key: Follow these instructions to obtain your API key.
+Template source code on Github
+Create your Telegram bot
+First, create a bot with BotFather. BotFather is the one bot to rule them all. We will use it to create new bot accounts and manage your existing bots.
+
+If you open a chat with a BotFather, click on the “Start” button.
+
+We should create a new bot by clicking /newbot command. Next, you should enter any name for the bot. In this example, we named it VF Game.
+
+1077
+BotFather
+
+The Telegram setup is completed! Remember to add your Telegram token to your .env file in the property BOT_TOKEN
+
+Telegraf setup
+We can create bot by the following code lines:
+
+JavaScript
+
+const Telegraf = require('telegraf') // import telegram lib
+
+const bot = new Telegraf(process.env.BOT_TOKEN) // get the token from envirenment variable
+bot.start((ctx) => ctx.reply('Welcome')) // display Welcome text when we start bot
+bot.hears('hi', (ctx) => ctx.reply('Hey there')) // listen and handle when user type hi text
+bot.launch() // start
+Voiceflow setup
+First, create a new function that takes Telegraf ctx, userID and a request in as arguments:
+async function interact(ctx, chatID, request){}
+
+Inside the function, make an API call to the Voiceflow /interact endpoint.
+
+JavaScript
+
+const response = await axios({
+        method: "POST",
+        url: `https://general-runtime.voiceflow.com/state/user/${chatID}/interact`,
+        headers: {
+            Authorization: process.env.VOICEFLOW_API_KEY
+        },
+        data: {
+            request
+        }
+    });
+Expect Voiceflow to return an array. Iterate over the array to map the various response types to an operation.
+
+JavaScript
+
+for (const trace of response.data) {
+        switch (trace.type) {
+            case "text":
+            case "speak":
+                {
+                    await ctx.reply(trace.payload.message);
+                    break;
+                }
+            case "visual":
+                {
+                    await ctx.replyWithPhoto(trace.payload.image);
+                    break;
+                }
+            case "end":
+                {
+                    await ctx.reply("Conversation is over")
+                    break;
+                }
+        }
+    }
+Everything is ready. Let's continue with our Telegrom bot code. Let's replace the start standard replay for this one, getting the correct replay from Voiceflow:
+
+JavaScript
+
+bot.start(async (ctx) => {
+    let chatID = ctx.message.chat.id;
+    await interact(ctx, ctx.message.chat.id, {type: "launch"});
+});
+Then we replace the hi utterance for a regex like (.+). This means that the bot will hear for everything. All the text received we will pass directly to Voiceflow and the we mange the state of the conversation: if it is ended or if it is not ended yet:
+
+JavaScript
+
+const ANY_WORD_REGEX = new RegExp(/(.+)/i);
+bot.hears(ANY_WORD_REGEX, async (ctx) => {
+    let chatID = ctx.message.chat.id;
+  	await interact(ctx, chatID, {
+        type: "text",
+        payload: ctx.message.text
+    });

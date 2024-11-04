@@ -13,10 +13,14 @@ class MessageHandler:
         self.voiceflow_client = VoiceflowClient()
         self.admin_handler = AdminHandler()
 
-    async def process_voiceflow_response(self, update: Update, traces: list):
+    async def process_voiceflow_response(self, update: Update, traces: list, is_callback: bool = False):
         """Process and send Voiceflow response traces to the user"""
         if not traces:
-            await update.message.reply_text("I didn't receive a response. Let's try starting over with /start")
+            message = "I didn't receive a response. Let's try starting over with /start"
+            if is_callback:
+                await update.callback_query.message.reply_text(message)
+            else:
+                await update.message.reply_text(message)
             return
 
         for trace in traces:
@@ -25,31 +29,33 @@ class MessageHandler:
                 if not trace_type:
                     continue
 
+                # Get the appropriate message object based on context
+                msg_obj = update.callback_query.message if is_callback else update.message
+
                 if trace_type in ['text', 'speak']:
                     message = trace.get('payload', {}).get('message')
                     if message:
-                        await update.message.reply_text(message)
+                        await msg_obj.reply_text(message)
                 elif trace_type == 'visual':
                     image_url = trace.get('payload', {}).get('image')
                     if image_url:
-                        await update.message.reply_photo(image_url)
+                        await msg_obj.reply_photo(image_url)
                 elif trace_type == 'choice':
                     buttons = trace.get('payload', {}).get('buttons', [])
                     if buttons:
                         keyboard = []
                         for button in buttons:
-                            # Create a callback data string that includes button request info
                             callback_data = f"button_{button['request']['type']}_{button['name']}"
                             keyboard.append([InlineKeyboardButton(button['name'], callback_data=callback_data)])
                         reply_markup = InlineKeyboardMarkup(keyboard)
-                        await update.message.reply_text("Please choose an option:", reply_markup=reply_markup)
+                        await msg_obj.reply_text("Please choose an option:", reply_markup=reply_markup)
                 elif trace_type == 'end':
-                    await update.message.reply_text("Conversation ended. You can start a new one with /start")
+                    await msg_obj.reply_text("Conversation ended. You can start a new one with /start")
             except Exception as e:
                 logger.error(f"Error processing trace {trace_type}: {str(e)}")
                 user_msg, log_msg = format_error_message(e)
                 logger.error(log_msg)
-                await update.message.reply_text(user_msg)
+                await msg_obj.reply_text(user_msg)
 
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle button callback queries"""
@@ -84,12 +90,8 @@ class MessageHandler:
             # Send the request to Voiceflow
             traces = await self.voiceflow_client.handle_button_click(user_id, request)
             
-            # Process the response
-            # We need to use callback query message instead of update.message
-            original_message = query.message
-            update.message = original_message  # Temporarily set message for process_voiceflow_response
-            await self.process_voiceflow_response(update, traces)
-            update.message = None  # Reset the message attribute
+            # Process the response with is_callback=True
+            await self.process_voiceflow_response(update, traces, is_callback=True)
 
         except Exception as e:
             user_msg, log_msg = format_error_message(e)

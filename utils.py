@@ -1,4 +1,5 @@
 import logging
+import requests
 from typing import Optional, Tuple
 from telegram import Update
 

@@ -11,18 +11,19 @@ class MessageBuffer:
         self.max_delay = max_delay
         self.message_queue = []
         
-    async def add_message(self, send_func: Callable[..., Coroutine[Any, Any, None]], *args, **kwargs):
+    async def add_message(self, send_func: Callable[..., Coroutine[Any, Any, None]], *args, is_user_input: bool = False, **kwargs):
         """Add a message to the buffer"""
-        self.message_queue.append((send_func, args, kwargs))
+        self.message_queue.append((send_func, args, kwargs, is_user_input))
         
     async def process_queue(self):
-        """Process all messages in the queue with random delays"""
+        """Process all messages in the queue with random delays only for user input messages"""
         while self.message_queue:
-            send_func, args, kwargs = self.message_queue.pop(0)
+            send_func, args, kwargs, is_user_input = self.message_queue.pop(0)
             try:
-                # Random delay before sending
-                delay = random.uniform(self.min_delay, self.max_delay)
-                await asyncio.sleep(delay)
+                # Random delay only for user input messages
+                if is_user_input:
+                    delay = random.uniform(self.min_delay, self.max_delay)
+                    await asyncio.sleep(delay)
                 
                 # Send the message
                 await send_func(*args, **kwargs)

@@ -38,11 +38,11 @@ class MessageHandler:
                 if trace_type in ['text', 'speak']:
                     message = trace.get('payload', {}).get('message')
                     if message:
-                        await self.message_buffer.add_message(msg_obj.reply_text, message)
+                        await self.message_buffer.add_message(msg_obj.reply_text, message, is_user_input=False)
                 elif trace_type == 'visual':
                     image_url = trace.get('payload', {}).get('image')
                     if image_url:
-                        await self.message_buffer.add_message(msg_obj.reply_photo, image_url)
+                        await self.message_buffer.add_message(msg_obj.reply_photo, image_url, is_user_input=False)
                 elif trace_type == 'choice':
                     buttons = trace.get('payload', {}).get('buttons', [])
                     if buttons:
@@ -54,12 +54,14 @@ class MessageHandler:
                         await self.message_buffer.add_message(
                             msg_obj.reply_text,
                             "Please choose an option:",
-                            reply_markup=reply_markup
+                            reply_markup=reply_markup,
+                            is_user_input=False
                         )
                 elif trace_type == 'end':
                     await self.message_buffer.add_message(
                         msg_obj.reply_text,
-                        "Conversation ended. You can start a new one with /start"
+                        "Conversation ended. You can start a new one with /start",
+                        is_user_input=False
                     )
             except Exception as e:
                 logger.error(f"Error processing trace {trace_type}: {str(e)}")
@@ -145,7 +147,12 @@ class MessageHandler:
 
             success = await self.voiceflow_client.clear_state(user_id)
             if success:
-                await update.message.reply_text("Conversation history cleared. You can start a new conversation with /start")
+                await self.message_buffer.add_message(
+                    update.message.reply_text,
+                    "Conversation history cleared. You can start a new conversation with /start",
+                    is_user_input=False
+                )
+                await self.message_buffer.flush()
             else:
                 await update.message.reply_text("Sorry, I couldn't clear the conversation history. Please try again later.")
 
@@ -193,4 +200,5 @@ class MessageHandler:
             "/clear - Clear conversation history\n"
             "/help - Show this help message\n"
         )
-        await update.message.reply_text(help_text)
+        await self.message_buffer.add_message(update.message.reply_text, help_text, is_user_input=False)
+        await self.message_buffer.flush()

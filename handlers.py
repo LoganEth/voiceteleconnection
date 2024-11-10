@@ -15,6 +15,7 @@ class MessageHandler:
         self.voiceflow_client = VoiceflowClient()
         self.admin_handler = AdminHandler()
         self.message_buffer = MessageBuffer()
+        self.processing_lock = {}  # Lock per user to prevent concurrent processing
 
     async def process_voiceflow_response(self, update: Update, traces: list, is_callback: bool = False):
         """Process and send Voiceflow response traces to the user"""
@@ -72,6 +73,22 @@ class MessageHandler:
         # Process all buffered messages
         await self.message_buffer.flush()
 
+    async def acquire_user_lock(self, user_id: str) -> bool:
+        """Acquire lock for user processing"""
+        if user_id not in self.processing_lock:
+            self.processing_lock[user_id] = asyncio.Lock()
+        
+        try:
+            await asyncio.wait_for(self.processing_lock[user_id].acquire(), timeout=1.0)
+            return True
+        except asyncio.TimeoutError:
+            return False
+
+    def release_user_lock(self, user_id: str):
+        """Release lock for user processing"""
+        if user_id in self.processing_lock and self.processing_lock[user_id].locked():
+            self.processing_lock[user_id].release()
+
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle button callback queries"""
         try:
@@ -82,31 +99,49 @@ class MessageHandler:
             _, button_type, button_label = query.data.split('_', 2)
             user_id = str(query.from_user.id)
 
-            # Create the appropriate request based on button type
-            if button_type == 'intent':
-                request = {
-                    'type': 'intent',
-                    'payload': {
-                        'intent': {
-                            'name': button_label.lower().replace(' ', '_')
-                        },
-                        'query': button_label,
-                        'entities': []
-                    }
-                }
-            else:  # Path ID or other types
-                request = {
-                    'type': button_type,
-                    'payload': {
-                        'label': button_label
-                    }
-                }
+            # Try to acquire lock for this user
+            if not await self.acquire_user_lock(user_id):
+                await query.message.reply_text("Please wait for your previous request to complete.")
+                return
 
-            # Send the request to Voiceflow
-            traces = await self.voiceflow_client.handle_button_click(user_id, request)
-            
-            # Process the response with is_callback=True
-            await self.process_voiceflow_response(update, traces, is_callback=True)
+            try:
+                # Create the appropriate request based on button type
+                if button_type == 'intent':
+                    request = {
+                        'type': 'intent',
+                        'payload': {
+                            'intent': {
+                                'name': button_label.lower().replace(' ', '_')
+                            },
+                            'query': button_label,
+                            'entities': []
+                        }
+                    }
+                else:  # Path ID or other types
+                    request = {
+                        'type': button_type,
+                        'payload': {
+                            'label': button_label
+                        }
+                    }
+
+                # Add typing indicator to buffer
+                await self.message_buffer.add_message(
+                    context.bot.send_chat_action,
+                    chat_id=query.message.chat_id,
+                    action="typing",
+                    is_user_input=True
+                )
+                await self.message_buffer.flush()
+
+                # Send the request to Voiceflow
+                traces = await self.voiceflow_client.handle_button_click(user_id, request)
+                
+                # Process the response with is_callback=True
+                await self.process_voiceflow_response(update, traces, is_callback=True)
+
+            finally:
+                self.release_user_lock(user_id)
 
         except Exception as e:
             user_msg, log_msg = format_error_message(e)
@@ -121,16 +156,29 @@ class MessageHandler:
                 await update.message.reply_text("I couldn't identify you. Please try again later.")
                 return
 
-            # Update stats for new user
-            AdminHandler.update_stats(user_id)
-            
+            # Try to acquire lock for this user
+            if not await self.acquire_user_lock(user_id):
+                await update.message.reply_text("Please wait for your previous request to complete.")
+                return
+
             try:
+                # Update stats for new user
+                AdminHandler.update_stats(user_id)
+                
+                # Add typing indicator to buffer
+                await self.message_buffer.add_message(
+                    context.bot.send_chat_action,
+                    chat_id=update.message.chat_id,
+                    action="typing",
+                    is_user_input=True
+                )
+                await self.message_buffer.flush()
+
                 traces = await self.voiceflow_client.launch_conversation(user_id)
                 await self.process_voiceflow_response(update, traces)
-            except requests.exceptions.RequestException as e:
-                user_msg, log_msg = format_error_message(e)
-                logger.error(log_msg)
-                await update.message.reply_text(user_msg)
+
+            finally:
+                self.release_user_lock(user_id)
                 
         except Exception as e:
             user_msg, log_msg = format_error_message(e)
@@ -145,16 +193,25 @@ class MessageHandler:
                 await update.message.reply_text("I couldn't identify you. Please try again later.")
                 return
 
-            success = await self.voiceflow_client.clear_state(user_id)
-            if success:
-                await self.message_buffer.add_message(
-                    update.message.reply_text,
-                    "Conversation history cleared. You can start a new conversation with /start",
-                    is_user_input=False
-                )
-                await self.message_buffer.flush()
-            else:
-                await update.message.reply_text("Sorry, I couldn't clear the conversation history. Please try again later.")
+            # Try to acquire lock for this user
+            if not await self.acquire_user_lock(user_id):
+                await update.message.reply_text("Please wait for your previous request to complete.")
+                return
+
+            try:
+                success = await self.voiceflow_client.clear_state(user_id)
+                if success:
+                    await self.message_buffer.add_message(
+                        update.message.reply_text,
+                        "Conversation history cleared. You can start a new conversation with /start",
+                        is_user_input=False
+                    )
+                    await self.message_buffer.flush()
+                else:
+                    await update.message.reply_text("Sorry, I couldn't clear the conversation history. Please try again later.")
+
+            finally:
+                self.release_user_lock(user_id)
 
         except Exception as e:
             user_msg, log_msg = format_error_message(e)
@@ -169,23 +226,36 @@ class MessageHandler:
                 await update.message.reply_text("I couldn't identify you. Please try again later.")
                 return
 
-            # Update stats for message
-            AdminHandler.update_stats(user_id)
-            
-            message = update.message.text
-            # Validate message
-            is_valid, error_message = validate_message(message)
-            if not is_valid:
-                await update.message.reply_text(error_message)
+            # Try to acquire lock for this user
+            if not await self.acquire_user_lock(user_id):
+                await update.message.reply_text("Please wait for your previous request to complete.")
                 return
 
             try:
+                # Update stats for message
+                AdminHandler.update_stats(user_id)
+                
+                message = update.message.text
+                # Validate message
+                is_valid, error_message = validate_message(message)
+                if not is_valid:
+                    await update.message.reply_text(error_message)
+                    return
+
+                # Add typing indicator to buffer
+                await self.message_buffer.add_message(
+                    context.bot.send_chat_action,
+                    chat_id=update.message.chat_id,
+                    action="typing",
+                    is_user_input=True
+                )
+                await self.message_buffer.flush()
+
                 traces = await self.voiceflow_client.send_message(user_id, message)
                 await self.process_voiceflow_response(update, traces)
-            except requests.exceptions.RequestException as e:
-                user_msg, log_msg = format_error_message(e)
-                logger.error(log_msg)
-                await update.message.reply_text(user_msg)
+
+            finally:
+                self.release_user_lock(user_id)
                 
         except Exception as e:
             user_msg, log_msg = format_error_message(e)

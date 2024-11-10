@@ -1,10 +1,12 @@
 import logging
 import requests
+import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from voiceflow_client import VoiceflowClient
 from admin_handlers import AdminHandler
 from utils import get_user_identifier, format_error_message, validate_message
+from message_buffer import MessageBuffer
 
 logger = logging.getLogger(__name__)
 
@@ -12,6 +14,7 @@ class MessageHandler:
     def __init__(self):
         self.voiceflow_client = VoiceflowClient()
         self.admin_handler = AdminHandler()
+        self.message_buffer = MessageBuffer()
 
     async def process_voiceflow_response(self, update: Update, traces: list, is_callback: bool = False):
         """Process and send Voiceflow response traces to the user"""
@@ -23,23 +26,23 @@ class MessageHandler:
                 await update.message.reply_text(message)
             return
 
+        # Get the appropriate message object based on context
+        msg_obj = update.callback_query.message if is_callback else update.message
+
         for trace in traces:
             try:
                 trace_type = trace.get('type')
                 if not trace_type:
                     continue
 
-                # Get the appropriate message object based on context
-                msg_obj = update.callback_query.message if is_callback else update.message
-
                 if trace_type in ['text', 'speak']:
                     message = trace.get('payload', {}).get('message')
                     if message:
-                        await msg_obj.reply_text(message)
+                        await self.message_buffer.add_message(msg_obj.reply_text, message)
                 elif trace_type == 'visual':
                     image_url = trace.get('payload', {}).get('image')
                     if image_url:
-                        await msg_obj.reply_photo(image_url)
+                        await self.message_buffer.add_message(msg_obj.reply_photo, image_url)
                 elif trace_type == 'choice':
                     buttons = trace.get('payload', {}).get('buttons', [])
                     if buttons:
@@ -48,14 +51,24 @@ class MessageHandler:
                             callback_data = f"button_{button['request']['type']}_{button['name']}"
                             keyboard.append([InlineKeyboardButton(button['name'], callback_data=callback_data)])
                         reply_markup = InlineKeyboardMarkup(keyboard)
-                        await msg_obj.reply_text("Please choose an option:", reply_markup=reply_markup)
+                        await self.message_buffer.add_message(
+                            msg_obj.reply_text,
+                            "Please choose an option:",
+                            reply_markup=reply_markup
+                        )
                 elif trace_type == 'end':
-                    await msg_obj.reply_text("Conversation ended. You can start a new one with /start")
+                    await self.message_buffer.add_message(
+                        msg_obj.reply_text,
+                        "Conversation ended. You can start a new one with /start"
+                    )
             except Exception as e:
                 logger.error(f"Error processing trace {trace_type}: {str(e)}")
                 user_msg, log_msg = format_error_message(e)
                 logger.error(log_msg)
                 await msg_obj.reply_text(user_msg)
+
+        # Process all buffered messages
+        await self.message_buffer.flush()
 
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle button callback queries"""

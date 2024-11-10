@@ -21,6 +21,7 @@ def main():
         # Add regular handlers
         application.add_handler(CommandHandler("start", message_handler.start_command))
         application.add_handler(CommandHandler("help", message_handler.help_command))
+        application.add_handler(CommandHandler("clear", message_handler.clear_command))
         
         # Add admin handlers
         application.add_handler(CommandHandler("add_admin", admin_handler.add_admin_command))

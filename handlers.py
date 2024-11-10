@@ -122,6 +122,25 @@ class MessageHandler:
             logger.error(f"Error in start command: {log_msg}")
             await update.message.reply_text(user_msg)
 
+    async def clear_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle the /clear command to reset conversation history"""
+        try:
+            user_id = get_user_identifier(update)
+            if not user_id:
+                await update.message.reply_text("I couldn't identify you. Please try again later.")
+                return
+
+            success = await self.voiceflow_client.clear_state(user_id)
+            if success:
+                await update.message.reply_text("Conversation history cleared. You can start a new conversation with /start")
+            else:
+                await update.message.reply_text("Sorry, I couldn't clear the conversation history. Please try again later.")
+
+        except Exception as e:
+            user_msg, log_msg = format_error_message(e)
+            logger.error(f"Error in clear command: {log_msg}")
+            await update.message.reply_text(user_msg)
+
     async def message_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle incoming messages"""
         try:
@@ -158,6 +177,7 @@ class MessageHandler:
         help_text = (
             "🤖 Bot Commands:\n\n"
             "/start - Start or restart a conversation\n"
+            "/clear - Clear conversation history\n"
             "/help - Show this help message\n"
         )
         await update.message.reply_text(help_text)

@@ -58,3 +58,14 @@ class VoiceflowClient:
     async def handle_button_click(self, user_id: str, button_request: Dict[str, Any]) -> List[Dict]:
         """Handle button click interaction"""
         return await self.interact(user_id, button_request)
+
+    async def clear_state(self, user_id: str) -> bool:
+        """Clear user conversation state"""
+        try:
+            url = f"{self.base_url}/state/user/{user_id}"
+            response = requests.delete(url, headers=self.headers)
+            response.raise_for_status()
+            return True
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error clearing conversation state: {str(e)}")
+            return False

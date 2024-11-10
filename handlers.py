@@ -89,6 +89,25 @@ class MessageHandler:
         if user_id in self.processing_lock and self.processing_lock[user_id].locked():
             self.processing_lock[user_id].release()
 
+    async def process_combined_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE, message: str):
+        """Process a combined message through Voiceflow"""
+        try:
+            # Add typing indicator
+            await context.bot.send_chat_action(
+                chat_id=update.message.chat_id,
+                action="typing"
+            )
+            
+            # Send combined message to Voiceflow
+            user_id = get_user_identifier(update)
+            traces = await self.voiceflow_client.send_message(user_id, message)
+            await self.process_voiceflow_response(update, traces)
+            
+        except Exception as e:
+            user_msg, log_msg = format_error_message(e)
+            logger.error(f"Error processing combined message: {log_msg}")
+            await update.message.reply_text(user_msg)
+
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle button callback queries"""
         try:
@@ -242,17 +261,15 @@ class MessageHandler:
                     await update.message.reply_text(error_message)
                     return
 
-                # Add typing indicator to buffer
+                # Add message to buffer with user_id
                 await self.message_buffer.add_message(
-                    context.bot.send_chat_action,
-                    chat_id=update.message.chat_id,
-                    action="typing",
-                    is_user_input=True
+                    self.process_combined_message,
+                    message,
+                    is_user_input=True,
+                    user_id=user_id,
+                    update=update,
+                    context=context
                 )
-                await self.message_buffer.flush()
-
-                traces = await self.voiceflow_client.send_message(user_id, message)
-                await self.process_voiceflow_response(update, traces)
 
             finally:
                 self.release_user_lock(user_id)
